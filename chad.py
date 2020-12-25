@@ -36,22 +36,38 @@ class ConnectionList(object):
         self.conn_names = dict()
         self.name_conns = dict()
 
+        # List of conn_ids that are staged for closing and deletion.
+        self.closed_conns = list()
+
     def new_conn(self, host, port):
         new_c = socket.create_connection((host, port))
         new_c.settimeout(SOCK_TIMEOUT)
         self.add_conn(new_c)
 
     def add_conn(self, soc):
+        """
+        Add a socket object to self.sockets, and give it a unique conn_id.
+        """
         for i in range(len(self.sockets) + 1):
             if i not in self.sockets:
                 self.sockets[i] = soc
                 break
 
-    def del_conn(self, conn_id):
-        self.sockets[conn_id].close()
-        # del self.conn_names[self.name_conns[conn_id]]
-        # del self.name_conns[conn_id]
-        self.sockets.pop(conn_id)
+    def close_conn(self, conn_id):
+        """
+        Stage a connection to be closed and deleted from the dicts.
+        """
+        self.closed_conns.append(conn_id)
+
+    def clean_list(self):
+        """
+        Deletes closed connections from the dicts.
+        """
+        for conn_id in self.closed_conns:
+            self.sockets[conn_id].close()
+            # del self.conn_names[self.name_conns[conn_id]]
+            # del self.name_conns[conn_id]
+            del self.sockets[conn_id]
 
     def get_socket(self, conn_id):
         return self.sockets[conn_id][0]
@@ -95,6 +111,7 @@ class ChadClient(object):
             self.exit(DISCONNECTED_MSG)
         self.send_pending()
         self.recv_pending()
+        self.connections.clean_list()
 
     def send_pending(self):
         """
@@ -112,28 +129,32 @@ class ChadClient(object):
             if conn_id in self.connections.sockets:
                 try:
                     data = self.connections.sockets[conn_id].recv(RECV_SIZE)
+
+                    # Other side disconnected
                     if not data:
-                        self.connections.del_conn(conn_id)
-                        # Other side disconnected
+                        self.connections.close_conn(conn_id)
+
                     else:
                         self.recv_buffer.append((conn_id, data))
+
                 except socket.timeout:
                     pass
 
     def close_conn(self, conn_id):
-        self.connections.del_conn(conn_id)
+        self.connections.close_conn(conn_id)
 
     def new_conn(self, host, port):
         self.connections.new_conn(host, port)
 
     def exit(self, message=None):
-        for conn in self.connections.sockets:
-            self.connections.del_conn(conn)
+        for conn_id in self.connections.sockets:
+            self.connections.close_conn(conn_id)
+        self.connections.clean_list()
         self._exit(message)
 
     def _exit(self, message=None):
         """
-        Exit method for Chad applications.
+        Exit method to be overwritten in Chad applications.
         """
         if message:
             print(message)

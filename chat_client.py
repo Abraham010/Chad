@@ -1,5 +1,5 @@
 # IMPORTS
-import chad_client as chad
+import chad
 import threading
 import time
 import argparse
@@ -59,8 +59,7 @@ class ChatClient(chad.ChadClient):
         self.recv_buffer.append((-1, ENTRY_MSG.encode()))
 
         while self.running:
-            self.send_pending()
-            self.recv_pending()
+            self.communicate()
 
     def input_loop(self):
         print(STARTED_INPUT)
@@ -93,8 +92,7 @@ class ChatClient(chad.ChadClient):
                 print(INCOMING_MSG_PROMPT.format(self.recv_buffer.pop(0)[1].decode()))
 
     def _exit(self, message=None):
-        if message:
-            print(message)
+        super()._exit(message)
         self.running = False
         while threading.activeCount() > 1:
             time.sleep(0.1)
