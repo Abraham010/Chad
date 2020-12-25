@@ -51,7 +51,7 @@ class ConnectionList(object):
         self.sockets[conn_id].close()
         # del self.conn_names[self.name_conns[conn_id]]
         # del self.name_conns[conn_id]
-        # self.sockets.pop(conn_id)
+        self.sockets.pop(conn_id)
 
     def get_socket(self, conn_id):
         return self.sockets[conn_id][0]
@@ -108,16 +108,17 @@ class ChadClient(object):
         """
         Receive information from all connections into self.recv_buffer.
         """
-        for conn in self.connections.sockets:
-            try:
-                data = self.connections.sockets[conn].recv(RECV_SIZE)
-                if not data:
-                    self.connections.del_conn(conn)
-                    # Other side disconnected
-                else:
-                    self.recv_buffer.append((conn, data))
-            except socket.timeout:
-                pass
+        for conn_id in range(len(self.connections.sockets)):
+            if conn_id in self.connections.sockets:
+                try:
+                    data = self.connections.sockets[conn_id].recv(RECV_SIZE)
+                    if not data:
+                        self.connections.del_conn(conn_id)
+                        # Other side disconnected
+                    else:
+                        self.recv_buffer.append((conn_id, data))
+                except socket.timeout:
+                    pass
 
     def close_conn(self, conn_id):
         self.connections.del_conn(conn_id)
