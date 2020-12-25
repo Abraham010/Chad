@@ -1,6 +1,6 @@
 # IMPORTS
 import socket
-import chat_client as chatc
+import chat_client as chatcl
 import argparse
 
 # CONSTANTS
@@ -31,7 +31,7 @@ def listen(port):
             listen_socket.listen()
             conn, address = listen_socket.accept()
             print(CONNECTED_MSG.format(address[0], address[1]))
-            chat_client = chatc.ChatClient(conn)
+            chat_client = chatcl.ChatClient(conn)
             chat_client.start_chat()
     except KeyboardInterrupt:
         quit()
