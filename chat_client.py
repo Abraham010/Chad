@@ -1,5 +1,5 @@
 # IMPORTS
-import chad_client as cc
+import chad_client as chad
 import threading
 import time
 import argparse
@@ -35,7 +35,7 @@ INCOMING_MSG_PROMPT = '>>> {}'
 # CLASSES
 
 
-class ChatClient(cc.ChadClient):
+class ChatClient(chad.ChadClient):
     def __init__(self, *connections):
         super().__init__(*connections)
 
@@ -74,12 +74,13 @@ class ChatClient(cc.ChadClient):
         split_msg = message.split(' ', maxsplit=1)
         if split_msg[0] in INPUT_COMMANDS:
             if len(split_msg) < 2:
-                data = ''
-            self.call_command(split_msg[0], data)
+                self.call_command(split_msg[0])
+            else:
+                self.call_command(split_msg[0], split_msg[1])
         else:
             self.send_buffer.append((self.active_conn, message.encode()))
 
-    def call_command(self, command, data):
+    def call_command(self, command, data=None):
         if command == '<EXIT>':
             self.exit()
         elif command == '<HELP>':
@@ -91,8 +92,9 @@ class ChatClient(cc.ChadClient):
             if len(self.recv_buffer) > 0:
                 print(INCOMING_MSG_PROMPT.format(self.recv_buffer.pop(0)[1].decode()))
 
-    def exit(self):
-        super().exit()
+    def _exit(self, message=None):
+        if message:
+            print(message)
         self.running = False
         while threading.activeCount() > 1:
             time.sleep(0.1)

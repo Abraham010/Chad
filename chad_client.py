@@ -10,11 +10,15 @@ BYTES = 0
 
 # MESSAGES
 
+DISCONNECTED_MSG = 'All connections closed.'
+
+EXITING_MSG = 'Exiting...'
+
 # CLASSES
 
 
 class ConnectionList(object):
-    def __init__(self, connections):
+    def __init__(self, sockets):
         """
         self.connections is a dictionary of {connectionID: socket}
         self.conn_names is a dictionary of {conn_name: connectionID}
@@ -23,12 +27,12 @@ class ConnectionList(object):
         connectionIDs are ints allocated to identify a connection.
         conn_names are names that identify connections.
         """
-        check_type(connections, socket.socket)
+        check_type(sockets, socket.socket)
 
-        for conn in connections:
-            conn.settimeout(SOCK_TIMEOUT)
+        for soc in sockets:
+            soc.settimeout(SOCK_TIMEOUT)
 
-        self.connections = {i: connections[i] for i in range(len(connections))}
+        self.sockets = {i: sockets[i] for i in range(len(sockets))}
         self.conn_names = dict()
         self.name_conns = dict()
 
@@ -38,19 +42,19 @@ class ConnectionList(object):
         self.add_conn(new_c)
 
     def add_conn(self, soc):
-        for i in range(len(self.connections) + 1):
-            if i not in self.connections:
-                self.connections[i] = soc
+        for i in range(len(self.sockets) + 1):
+            if i not in self.sockets:
+                self.sockets[i] = soc
                 break
 
     def del_conn(self, conn_id):
-        self.connections[conn_id].close()
-        del self.conn_names[self.name_conns[conn_id]]
-        del self.name_conns[conn_id]
-        del self.connections[conn_id]
+        self.sockets[conn_id].close()
+        # del self.conn_names[self.name_conns[conn_id]]
+        # del self.name_conns[conn_id]
+        # self.sockets.pop(conn_id)
 
     def get_socket(self, conn_id):
-        return self.connections[conn_id][0]
+        return self.sockets[conn_id][0]
 
     def get_conn(self, conn_name):
         return self.conn_names[conn_name]
@@ -86,23 +90,29 @@ class ChadClient(object):
         self.recv_buffer = list()
         # An item in a buffer should be in the form of: (connectionID, info)
 
+    def communicate(self):
+        if len(self.connections.sockets) == 0:
+            self.exit(DISCONNECTED_MSG)
+        self.send_pending()
+        self.recv_pending()
+
     def send_pending(self):
         """
         Sends information from self.send_buffer to through the corresponding connection.
         """
         while len(self.send_buffer) > 0:
             message = self.send_buffer.pop(0)
-            send(self.connections.connections[message[0]], message[1], BYTES)
+            send(self.connections.sockets[message[0]], message[1], BYTES)
 
     def recv_pending(self):
         """
-        Receive information from all connections into
+        Receive information from all connections into self.recv_buffer.
         """
-        for conn in self.connections.connections:
+        for conn in self.connections.sockets:
             try:
-                data = self.connections.connections[conn].recv(RECV_SIZE)
+                data = self.connections.sockets[conn].recv(RECV_SIZE)
                 if not data:
-                    self.close_conn(conn)
+                    self.connections.del_conn(conn)
                     # Other side disconnected
                 else:
                     self.recv_buffer.append((conn, data))
@@ -115,9 +125,18 @@ class ChadClient(object):
     def new_conn(self, host, port):
         self.connections.new_conn(host, port)
 
-    def exit(self):
-        for conn in self.connections.connections:
+    def exit(self, message=None):
+        for conn in self.connections.sockets:
             self.connections.del_conn(conn)
+        self._exit(message)
+
+    def _exit(self, message=None):
+        """
+        Exit method for Chad applications.
+        """
+        if message:
+            print(message)
+        print(EXITING_MSG)
 
 
 # FUNCTIONS

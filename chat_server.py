@@ -7,9 +7,12 @@ import argparse
 
 # MESSAGES
 CONNECTED_MSG = 'New connection from {}:{}'
+
 DESCRIPTION = '''
 Chad Server. Listen for new connections and create clients.
 '''
+
+LISTENING = 'Listening on port {}...'
 
 # FUNCTIONS
 
@@ -23,6 +26,7 @@ def parse_args():
 def listen(port):
     try:
         with socket.socket() as listen_socket:
+            print(LISTENING.format(port))
             listen_socket.bind(('', port))
             listen_socket.listen()
             conn, address = listen_socket.accept()
