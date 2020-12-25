@@ -1,6 +1,6 @@
 # IMPORTS
 import socket
-import chat_client as chcl
+import chat_client as chatc
 import argparse
 
 # CONSTANTS
@@ -9,7 +9,7 @@ import argparse
 CONNECTED_MSG = 'New connection from {}:{}'
 
 DESCRIPTION = '''
-Chad Server. Listen for new connections and create clients.
+Chad-Chat Server. Listen for new connections and create clients.
 '''
 
 LISTENING = 'Listening on port {}...'
@@ -31,7 +31,7 @@ def listen(port):
             listen_socket.listen()
             conn, address = listen_socket.accept()
             print(CONNECTED_MSG.format(address[0], address[1]))
-            chat_client = chcl.ChatClient(conn)
+            chat_client = chatc.ChatClient(conn)
             chat_client.start_chat()
     except KeyboardInterrupt:
         quit()
