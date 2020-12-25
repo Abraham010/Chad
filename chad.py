@@ -14,6 +14,31 @@ DISCONNECTED_MSG = 'All connections closed.'
 
 EXITING_MSG = 'Exiting...'
 
+
+# FUNCTIONS
+
+
+def check_type(var, *types, message=None, direct_check=False):
+    """
+    Check if var is of one of the types, else raise a TypeError with a message.
+    If var is a list or tuple, check every element.
+    """
+    if message is None:
+        message = '{} must be of type {}'.format(var, ', '.join(map(str, types)))
+    if type(var) in (list, tuple) and not direct_check:
+        for element in var:
+            if type(element) not in types:
+                raise TypeError(message)
+    else:
+        if type(var) not in types:
+            raise TypeError(message)
+
+
+def send(soc, data, code=BYTES):
+    if code == BYTES:
+        soc.sendall(data)
+
+
 # CLASSES
 
 
@@ -159,27 +184,3 @@ class ChadClient(object):
         if message:
             print(message)
         print(EXITING_MSG)
-
-
-# FUNCTIONS
-
-
-def check_type(var, *types, message=None, direct_check=False):
-    """
-    Check if var is of one of the types, else raise a TypeError with a message.
-    If var is a list or tuple, check every element.
-    """
-    if message is None:
-        message = '{} must be of type {}'.format(var, ', '.join(map(str, types)))
-    if type(var) in (list, tuple) and not direct_check:
-        for element in var:
-            if type(element) not in types:
-                raise TypeError(message)
-    else:
-        if type(var) not in types:
-            raise TypeError(message)
-
-
-def send(soc, data, code=BYTES):
-    if code == BYTES:
-        soc.sendall(data)
