@@ -2,6 +2,7 @@
 import socket
 import chat_client as chatcl
 import argparse
+import chad
 
 # CONSTANTS
 
@@ -24,17 +25,14 @@ def parse_args():
 
 
 def listen(port):
-    try:
-        with socket.socket() as listen_socket:
-            print(LISTENING.format(port))
-            listen_socket.bind(('', port))
-            listen_socket.listen()
-            conn, address = listen_socket.accept()
-            print(CONNECTED_MSG.format(address[0], address[1]))
-            chat_client = chatcl.ChatClient(conn)
-            chat_client.start_chat()
-    except KeyboardInterrupt:
-        quit()
+    with socket.socket() as listen_socket:
+        print(LISTENING.format(port))
+        listen_socket.bind(('', port))
+        listen_socket.listen()
+        soc, address = listen_socket.accept()
+        print(CONNECTED_MSG.format(address[0], address[1]))
+        chat_client = chatcl.ChatClient(chad.Connection(soc))
+        chat_client.start()
 
 
 # MAIN

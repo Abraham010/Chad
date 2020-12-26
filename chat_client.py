@@ -6,10 +6,7 @@ import argparse
 
 # CONSTANTS
 
-INPUT_COMMANDS = [
-    '<EXIT>',
-    '<HELP>'
-]
+COMMAND_CHAR = '!'
 
 # MESSAGES
 
@@ -17,8 +14,8 @@ ENTRY_MSG = '''
 ===============================================================================
 - POWERED BY C.H.A.D (Communication system utilizing Hot Administrator Dogma) -
                               Welcome to Chad Chat!
-                             To get help type <HELP>.
-                               To exit type <EXIT>.
+                             To get help type !help.
+                               To exit type !exit.
 ===============================================================================
 '''
 
@@ -28,9 +25,9 @@ Help will be here soon.
 
 STARTED_INPUT = '[+ Started Input Thread]'
 STARTED_OUTPUT = '[+ Started Output Thread]'
-STARTED_CHAT = '[+ Started Chat Thread]'
+STARTED_MAIN = '[+ Started Main Thread]'
 
-INCOMING_MSG_PROMPT = '>>> {}'
+INCOMING_MSG_PROMPT = '>>>'
 
 # CLASSES
 
@@ -41,7 +38,7 @@ class ChatClient(chad.ChadClient):
 
         self.running = True
 
-        self.active_conn = 0
+        self.active_conn = None
 
         self.input_thread = threading.Thread(target=self.input_loop)
         self.output_thread = threading.Thread(target=self.output_loop)
@@ -52,17 +49,19 @@ class ChatClient(chad.ChadClient):
         while threading.activeCount() < 3:
             time.sleep(0.1)
 
-    def start_chat(self):
-        print(STARTED_CHAT)
+    def start(self):
+        print(STARTED_MAIN)
+
         self._start_threads()
 
-        self.recv_buffer.append((-1, ENTRY_MSG.encode()))
+        print(ENTRY_MSG)
 
         while self.running:
             self.communicate()
 
     def input_loop(self):
         print(STARTED_INPUT)
+
         while self.running:
             self.handle_input(input())
 
@@ -70,33 +69,38 @@ class ChatClient(chad.ChadClient):
         """
         Handle incoming input - call input commands or append to buffer.
         """
-        split_msg = message.split(' ', maxsplit=1)
-        if split_msg[0] in INPUT_COMMANDS:
-            if len(split_msg) < 2:
-                self.call_command(split_msg[0])
+        if len(message) > 0:
+            if message[0] == COMMAND_CHAR:
+                self.call_command(message[1:])
             else:
-                self.call_command(split_msg[0], split_msg[1])
-        else:
-            self.send_buffer.append((self.active_conn, message.encode()))
+                self.send(self.active_conn, message.encode())
 
     def call_command(self, command, data=None):
-        if command == '<EXIT>':
+        if command == 'exit':
+            # NEEDS CHANGE
             self.exit()
-        elif command == '<HELP>':
+        elif command == 'help':
             print(HELP_MSG)
+        else:
+            print('Command not found.')
 
     def output_loop(self):
         print(STARTED_OUTPUT)
         while self.running:
-            if len(self.recv_buffer) > 0:
-                print(INCOMING_MSG_PROMPT.format(self.recv_buffer.pop(0)[1].decode()))
+            while self.incoming_data() > 0:
+                print(INCOMING_MSG_PROMPT, self.recv()[1].decode())
 
-    def _exit(self, message=None):
-        super()._exit(message)
+    def exit(self, message=None):
+        if message:
+            print(message)
         self.running = False
+        self.close_all_conns()
         while threading.activeCount() > 1:
             time.sleep(0.1)
         quit()
+
+    def all_disconnected(self):
+        self.exit(chad.DISCONNECTED_MSG)
 
 # FUNCTIONS
 
@@ -114,7 +118,7 @@ def main():
     args = parse_args()
     client = ChatClient()
     client.new_conn(args.host_ip, args.host_port)
-    client.start_chat()
+    client.start()
 
 
 if __name__ == '__main__':

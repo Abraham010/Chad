@@ -4,6 +4,7 @@ import socket
 # CONSTANTS
 SOCK_TIMEOUT = 0.1
 RECV_SIZE = 4096
+DEFAULT_PORT = 55555
 
 # SEND CODES
 BYTES = 0
@@ -34,153 +35,207 @@ def check_type(var, *types, message=None, direct_check=False):
             raise TypeError(message)
 
 
-def send(soc, data, code=BYTES):
-    if code == BYTES:
-        soc.sendall(data)
-
-
 # CLASSES
 
 
-class ConnectionList(object):
-    def __init__(self, sockets):
+class Connection(object):
+    def __init__(self, host, port=DEFAULT_PORT):
         """
-        self.connections is a dictionary of {connectionID: socket}
-        self.conn_names is a dictionary of {conn_name: connectionID}
-        self.name_conns is a dictionary of {connectionID: conn_name}
-
-        connectionIDs are ints allocated to identify a connection.
-        conn_names are names that identify connections.
+        Object representing a connection to a client.
+        :param host: (str or bytes) ip of host the connection is to, or existing (socket).
+        :param port: (int) port of the host client to connect to.
         """
-        check_type(sockets, socket.socket)
+        if type(host) == str or type(host) == bytes:
+            self.socket = socket.create_connection((host, port))
+        elif type(host) == socket.socket:
+            self.socket = host
+        else:
+            raise TypeError('host for Connection must be a string or socket object')
 
-        for soc in sockets:
-            soc.settimeout(SOCK_TIMEOUT)
+        self.socket.settimeout(SOCK_TIMEOUT)
 
-        self.sockets = {i: sockets[i] for i in range(len(sockets))}
-        self.conn_names = dict()
-        self.name_conns = dict()
-
-        # List of conn_ids that are staged for closing and deletion.
-        self.closed_conns = list()
-
-    def new_conn(self, host, port):
-        new_c = socket.create_connection((host, port))
-        new_c.settimeout(SOCK_TIMEOUT)
-        self.add_conn(new_c)
-
-    def add_conn(self, soc):
+    def local_info(self):
         """
-        Add a socket object to self.sockets, and give it a unique conn_id.
+        Return (local_address, local_port)
         """
-        for i in range(len(self.sockets) + 1):
-            if i not in self.sockets:
-                self.sockets[i] = soc
-                break
+        return self.socket.getsockname()
+
+    def peer_info(self):
+        """
+        Return (peer_address, peer_port)
+        """
+        return self.socket.getpeername()
+
+    def close(self):
+        self.socket.close()
+
+    def send(self, data):
+        self.socket.send(data)
+
+    def recv(self, bufsize=RECV_SIZE):
+        return self.socket.recv(bufsize)
+
+
+class ChadClient(object):
+    """
+    Chad Client - manages multiple connections and supplies multiple functions
+    for sending and receiving data.
+
+    Methods that should be used by Chad-Powered applications are as described below:
+
+    -- MAIN METHODS --
+    send, recv, communicate, close_all_conns
+
+    -- USEFUL METHODS --
+    new_conn, get_conn_ids, close_conn, incoming_data
+
+    -- METHODS APPLICATIONS CAN OVERWRITE --
+    conn_disconnected, all_disconnected
+    """
+
+    def __init__(self, *connections):
+        """
+        self.connections is a dict of {connectionID: Connection_Object}
+        self.closed_conns is a set of connectionIDs that are staged fro closing and deletion.
+
+        A connectionID is an int identifying a connection in the client.
+
+        :param connections: (list of Connection objects) Connections connected to other clients.
+        """
+        self.connections = dict()
+        for conn in connections:
+            self.add_conn(conn)
+        self._closed_conns = set()
+
+        # Buffer for information waiting to be sent.
+        self._send_buffer = list()
+        # Buffer for information waiting to be received and processed.
+        self._recv_buffer = list()
+        # An item in a buffer should be in the form of: (connectionID, bytes)
+
+    def send(self, conn_id, data):
+        """
+        Stage data to be sent to the specified connection (append to send_buffer).
+        :param conn_id: (int) connectionID. (None) to broadcast to all connections.
+        :param data: (bytes) data to be sent through the connection.
+        """
+        if (conn_id is None or conn_id in self.connections) and type(data) == bytes:
+            self._send_buffer.append((conn_id, data))
+
+    def incoming_data(self):
+        """
+        Return the number of items in the recv_buffer.
+        """
+        return len(self._recv_buffer)
+
+    def recv(self):
+        """
+        Return data received from a connection (first item of recv_buffer),
+        in the form (connectionID, data).
+        """
+        if len(self._recv_buffer) > 0:
+            return self._recv_buffer.pop(0)
+
+    def communicate(self):
+        """
+        Main function for the client: should be run in a loop.
+        Send all data that is staged for sending (in send_buffer) and
+        receive data from all connections into recv_buffer.
+        Also close any pending connections and call all_disconnected if no more connections are active.
+        """
+        if len(self.connections) == 0:
+            self.all_disconnected()
+        self._send_pending()
+        self._recv_pending()
+        self._clean_connections()
+
+    def _send_pending(self):
+        """
+        Sends information from self.send_buffer through the corresponding connection.
+        """
+        while len(self._send_buffer) > 0:
+            conn_id, data = self._send_buffer.pop(0)
+
+            # Broadcast
+            if conn_id is None:
+                for conn in self.connections:
+                    self.connections[conn].send(data)
+            # Regular send
+            else:
+                self.connections[conn_id].send(data)
+
+    def _recv_pending(self):
+        """
+        Receive information from all connections into self.recv_buffer.
+        """
+        for conn_id in self.connections:
+            try:
+                data = self.connections[conn_id].recv()
+
+                # Other side disconnected
+                if not data:
+                    self.conn_disconnected(conn_id)
+
+                else:
+                    self._recv_buffer.append((conn_id, data))
+
+            except socket.timeout:
+                pass
+
+    def _clean_connections(self):
+        """
+        Close connections at connectionIDs from closed_conns,
+        and delete them from the connection list.
+        """
+        for conn_id in self._closed_conns:
+            self.connections[conn_id].close()
+            del self.connections[conn_id]
 
     def close_conn(self, conn_id):
         """
         Stage a connection to be closed and deleted from the dicts.
         """
-        self.closed_conns.append(conn_id)
+        if conn_id in self.connections:
+            self._closed_conns.add(conn_id)
 
-    def clean_list(self):
+    def new_conn(self, host, port=DEFAULT_PORT):
         """
-        Deletes closed connections from the dicts.
+        Create a new Connection object and add it to self.connections.
         """
-        for conn_id in self.closed_conns:
-            self.sockets[conn_id].close()
-            # del self.conn_names[self.name_conns[conn_id]]
-            # del self.name_conns[conn_id]
-            del self.sockets[conn_id]
+        self.add_conn(Connection(host, port))
 
-    def get_socket(self, conn_id):
-        return self.sockets[conn_id][0]
-
-    def get_conn(self, conn_name):
-        return self.conn_names[conn_name]
-
-    def set_name(self, name, conn_id):
-        check_type(name, bytes, str)
-        check_type(conn_id, int)
-        if type(name) == str:
-            name = name.encode()
-        if name not in self.conn_names:
-            self.conn_names[name] = conn_id
-            self.name_conns[conn_id] = name
-            return True
-        return False
-
-
-class ChadClient(object):
-    def __init__(self, *connections, client_name=None):
+    def add_conn(self, conn):
         """
-        Base Chad client class.
-        Handles the communication with other clients for a session.
-        :param connections: (list of socket) sockets connected to other clients.
-        :param client_name: (bytes) the name of this client.
+        Add a Connection object to self.connections, and give it a unique connectionID.
         """
-        check_type(client_name, bytes, type(None))
-        self.client_name = client_name
+        for i in range(len(self.connections) + 1):
+            if i not in self.connections:
+                self.connections[i] = conn
+                break
 
-        self.connections = ConnectionList(connections)
-
-        # Buffer for information waiting to be sent.
-        self.send_buffer = list()
-        # Buffer for information waiting to be received and processed.
-        self.recv_buffer = list()
-        # An item in a buffer should be in the form of: (connectionID, info)
-
-    def communicate(self):
-        if len(self.connections.sockets) == 0:
-            self.exit(DISCONNECTED_MSG)
-        self.send_pending()
-        self.recv_pending()
-        self.connections.clean_list()
-
-    def send_pending(self):
+    def get_conn_ids(self):
         """
-        Sends information from self.send_buffer to through the corresponding connection.
+        Return a set of connectionIDs that are active.
         """
-        while len(self.send_buffer) > 0:
-            message = self.send_buffer.pop(0)
-            send(self.connections.sockets[message[0]], message[1], BYTES)
+        return self.connections.keys() - self._closed_conns
 
-    def recv_pending(self):
+    def close_all_conns(self):
         """
-        Receive information from all connections into self.recv_buffer.
+        Close all connections. Should be called on an exit.
         """
-        for conn_id in range(len(self.connections.sockets)):
-            if conn_id in self.connections.sockets:
-                try:
-                    data = self.connections.sockets[conn_id].recv(RECV_SIZE)
+        for conn_id in self.connections:
+            self.close_conn(conn_id)
+        self._clean_connections()
 
-                    # Other side disconnected
-                    if not data:
-                        self.connections.close_conn(conn_id)
-
-                    else:
-                        self.recv_buffer.append((conn_id, data))
-
-                except socket.timeout:
-                    pass
-
-    def close_conn(self, conn_id):
-        self.connections.close_conn(conn_id)
-
-    def new_conn(self, host, port):
-        self.connections.new_conn(host, port)
-
-    def exit(self, message=None):
-        for conn_id in self.connections.sockets:
-            self.connections.close_conn(conn_id)
-        self.connections.clean_list()
-        self._exit(message)
-
-    def _exit(self, message=None):
+    def conn_disconnected(self, conn_id):
         """
-        Exit method to be overwritten in Chad applications.
+        Gets called when a connection is closed.
         """
-        if message:
-            print(message)
-        print(EXITING_MSG)
+        self.close_conn(conn_id)
+
+    def all_disconnected(self):
+        """
+        Gets called when all connections are closed.
+        """
+        print(DISCONNECTED_MSG)
+        quit()
