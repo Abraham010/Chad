@@ -25,39 +25,35 @@ Help will be here soon.
 
 STARTED_INPUT = '[+ Started Input Thread]'
 STARTED_OUTPUT = '[+ Started Output Thread]'
-STARTED_MAIN = '[+ Started Main Thread]'
+STARTED_COMMUNICATION = '[+ Started Communication Thread]'
 
 INCOMING_MSG_PROMPT = '>>>'
 
 # CLASSES
 
 
-class ChatClient(chad.ChadClient):
-    def __init__(self, *connections):
-        super().__init__(*connections)
-
+class ChatClient(object):
+    def __init__(self):
         self.running = True
 
-        self.active_conn = None
+        self.chad = chad.ChadClient()
 
         self.input_thread = threading.Thread(target=self.input_loop)
         self.output_thread = threading.Thread(target=self.output_loop)
 
-    def _start_threads(self):
-        self.input_thread.start()
-        self.output_thread.start()
-        while threading.activeCount() < 3:
-            time.sleep(0.1)
-
     def start(self):
-        print(STARTED_MAIN)
-
-        self._start_threads()
-
+        # Add control messages for input thread
+        print(STARTED_COMMUNICATION)
         print(ENTRY_MSG)
 
-        while self.running:
-            self.communicate()
+        self._start_threads()
+        self.chad.communicate_loop()
+
+    def _start_threads(self):
+        self.output_thread.start()
+        self.input_thread.start()
+        while threading.activeCount() < 3:
+            time.sleep(0.01)
 
     def input_loop(self):
         print(STARTED_INPUT)
@@ -67,17 +63,17 @@ class ChatClient(chad.ChadClient):
 
     def handle_input(self, message):
         """
-        Handle incoming input - call input commands or append to buffer.
+        Handle incoming input - call input commands or send through connection.
         """
         if len(message) > 0:
             if message[0] == COMMAND_CHAR:
                 self.call_command(message[1:])
             else:
-                self.send(self.active_conn, message.encode())
+                # Send the message
+                self.chad.stage_send(chad.BROADCAST, message.encode())
 
-    def call_command(self, command, data=None):
+    def call_command(self, command):
         if command == 'exit':
-            # NEEDS CHANGE
             self.exit()
         elif command == 'help':
             print(HELP_MSG)
@@ -86,21 +82,27 @@ class ChatClient(chad.ChadClient):
 
     def output_loop(self):
         print(STARTED_OUTPUT)
-        while self.running:
-            while self.incoming_data() > 0:
-                print(INCOMING_MSG_PROMPT, self.recv()[1].decode())
 
-    def exit(self, message=None):
-        if message:
-            print(message)
+        while self.running:
+            while self.chad.incoming_data() > 0:
+                print(INCOMING_MSG_PROMPT, self.chad.receive()[1].decode())
+
+    def exit(self):
+        """
+        Exit all threads gracefully.
+        """
+        self.chad.exit()
         self.running = False
-        self.close_all_conns()
         while threading.activeCount() > 1:
-            time.sleep(0.1)
+            time.sleep(0.01)
         quit()
 
-    def all_disconnected(self):
-        self.exit(chad.DISCONNECTED_MSG)
+    def connect(self, host, port):
+        """
+        Temporary connect method
+        """
+        self.chad.new_conn(host, port)
+
 
 # FUNCTIONS
 
@@ -110,6 +112,7 @@ def parse_args():
     parser.add_argument('host_ip', type=str, help='IP of host to connect to')
     parser.add_argument('host_port', type=int, help='Port of host to connect to')
     return parser.parse_args()
+
 
 # MAIN
 
